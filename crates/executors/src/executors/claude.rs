@@ -13,7 +13,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use command_group::AsyncCommandGroup;
 use futures::StreamExt;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -22,6 +21,7 @@ use tokio_util::sync::CancellationToken;
 use ts_rs::TS;
 use workspace_utils::{
     approvals::{ApprovalStatus, QuestionStatus},
+    command_ext::GroupSpawnNoWindowExt,
     diff::create_unified_diff,
     log_msg::LogMsg,
     msg_store::MsgStore,
@@ -62,7 +62,7 @@ fn base_command(claude_code_router: bool) -> &'static str {
     if claude_code_router {
         "npx -y @musistudio/claude-code-router@1.0.66 code"
     } else {
-        "npx -y @anthropic-ai/claude-code@2.1.62"
+        "npx -y @anthropic-ai/claude-code@2.1.119"
     }
 }
 
@@ -111,6 +111,7 @@ pub enum ClaudeEffort {
     Low,
     Medium,
     High,
+    XHigh,
     Max,
 }
 
@@ -269,7 +270,7 @@ fn default_discovered_options() -> crate::executor_discovery::ExecutorDiscovered
     };
 
     let effort_options =
-        ReasoningOption::from_names(["low", "medium", "high", "max"].map(String::from));
+        ReasoningOption::from_names(["low", "medium", "high", "xhigh", "max"].map(String::from));
 
     let supports_effort = |id: &str| -> bool { id.contains("opus") || id.contains("sonnet") };
 
@@ -579,7 +580,12 @@ impl StandardCodingAgentExecutor for ClaudeCode {
         ExecutorConfig {
             executor: BaseCodingAgent::ClaudeCode,
             variant: None,
-            model_id: self.model.clone(),
+            model_id: self.model.clone().or_else(|| {
+                default_discovered_options()
+                    .model_selector
+                    .default_model
+                    .clone()
+            }),
             agent_id: None,
             reasoning_id: self.effort.as_ref().map(|e| e.as_ref().to_owned()),
             permission_policy: Some(permission_policy),
@@ -641,7 +647,7 @@ impl ClaudeCode {
             tracing::info!("ANTHROPIC_API_KEY removed from environment");
         }
 
-        let mut child = command.group_spawn()?;
+        let mut child = command.group_spawn_no_window()?;
         let child_stdout = child.inner().stdout.take().ok_or_else(|| {
             ExecutorError::Io(std::io::Error::other("Claude Code missing stdout"))
         })?;

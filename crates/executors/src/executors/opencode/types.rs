@@ -7,7 +7,7 @@ use workspace_utils::approvals::{ApprovalStatus, QuestionStatus};
 /// JSON log events emitted by the OpenCode SDK executor.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum OpencodeExecutorEvent {
+pub(super) enum OpencodeExecutorEvent {
     StartupLog {
         message: String,
     },
@@ -61,11 +61,13 @@ pub(super) struct SdkEventEnvelope {
 pub(super) enum SdkEvent {
     MessageUpdated(MessageUpdatedEvent),
     MessagePartUpdated(MessagePartUpdatedEvent),
+    MessagePartDelta(MessagePartDeltaEvent),
     MessageRemoved,
     MessagePartRemoved,
     PermissionAsked(PermissionAskedEvent),
     PermissionReplied,
     SessionIdle,
+    SessionUpdated,
     SessionStatus(SessionStatusEvent),
     SessionDiff,
     SessionCompacted,
@@ -90,6 +92,9 @@ impl SdkEvent {
             "message.part.updated" => {
                 SdkEvent::MessagePartUpdated(serde_json::from_value(envelope.properties).ok()?)
             }
+            "message.part.delta" => {
+                SdkEvent::MessagePartDelta(serde_json::from_value(envelope.properties).ok()?)
+            }
             "message.removed" => SdkEvent::MessageRemoved,
             "message.part.removed" => SdkEvent::MessagePartRemoved,
             "permission.asked" => {
@@ -97,6 +102,10 @@ impl SdkEvent {
             }
             "permission.replied" => SdkEvent::PermissionReplied,
             "session.idle" => SdkEvent::SessionIdle,
+            "session.updated" => {
+                parse_session_updated_event(&envelope.properties)?;
+                SdkEvent::SessionUpdated
+            }
             "session.status" => {
                 SdkEvent::SessionStatus(serde_json::from_value(envelope.properties).ok()?)
             }
@@ -208,6 +217,17 @@ pub(super) struct MessagePartUpdatedEvent {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct MessagePartDeltaEvent {
+    #[allow(dead_code)]
+    #[serde(rename = "messageID")]
+    pub(super) message_id: String,
+    #[serde(rename = "partID")]
+    pub(super) part_id: String,
+    pub(super) field: String,
+    pub(super) delta: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct PermissionAskedEvent {
     #[allow(dead_code)]
     pub(super) id: String,
@@ -284,9 +304,15 @@ pub(super) struct TodoUpdatedEvent {
     pub(super) todos: Vec<SdkTodo>,
 }
 
+fn parse_session_updated_event(properties: &Value) -> Option<()> {
+    properties.get("sessionID")?.as_str()?;
+    Some(())
+}
+
 #[derive(Debug, Deserialize)]
 pub(super) struct SdkTodo {
-    pub(super) id: String,
+    #[serde(default)]
+    pub(super) id: Option<String>,
     pub(super) content: String,
     pub(super) status: String,
     pub(super) priority: String,
@@ -307,6 +333,8 @@ pub(super) enum Part {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct TextPart {
+    #[serde(default)]
+    pub(super) id: Option<String>,
     #[serde(rename = "messageID")]
     pub(super) message_id: String,
     pub(super) text: String,
@@ -410,7 +438,7 @@ pub(super) struct Config {
 }
 
 #[derive(Debug, Deserialize, Default)]
-pub struct ProviderModelInfo {
+pub(super) struct ProviderModelInfo {
     #[serde(default)]
     pub id: String,
     #[serde(default)]
@@ -424,13 +452,13 @@ pub struct ProviderModelInfo {
 }
 
 #[derive(Debug, Deserialize, Default)]
-pub struct ProviderModelLimit {
+pub(super) struct ProviderModelLimit {
     #[serde(default, deserialize_with = "deserialize_f64_as_u32")]
     pub context: u32,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ProviderInfo {
+pub(super) struct ProviderInfo {
     pub id: String,
     #[serde(default)]
     pub name: String,
@@ -439,7 +467,7 @@ pub struct ProviderInfo {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ProviderListResponse {
+pub(super) struct ProviderListResponse {
     pub all: Vec<ProviderInfo>,
     #[serde(default)]
     pub connected: Vec<String>,

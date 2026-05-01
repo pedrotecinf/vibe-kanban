@@ -264,7 +264,9 @@ pub trait ContainerService {
                 return;
             }
         };
-        self.notification_service().notify(&title, &message).await;
+        self.notification_service()
+            .notify(&title, &message, Some(ctx.workspace.id))
+            .await;
     }
 
     /// Cleanup executions marked as running in the db, call at startup
@@ -500,7 +502,10 @@ pub trait ContainerService {
             None => {
                 Session::create(
                     pool,
-                    &CreateSession { executor: None },
+                    &CreateSession {
+                        executor: None,
+                        name: None,
+                    },
                     Uuid::new_v4(),
                     workspace.id,
                 )
@@ -826,11 +831,11 @@ pub trait ContainerService {
         &self,
         id: &Uuid,
     ) -> Option<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>> {
-        // First try in-memory store (existing behavior)
         if let Some(store) = self.get_msg_store_by_id(id).await {
             Some(
                 store
-                    .history_plus_stream() // BoxStream<Result<LogMsg, io::Error>>
+                    .history_plus_stream()
+                    .take_while(|msg| future::ready(!matches!(msg, Ok(LogMsg::Finished))))
                     .filter(|msg| future::ready(matches!(msg, Ok(LogMsg::JsonPatch(..)))))
                     .chain(futures::stream::once(async {
                         Ok::<_, std::io::Error>(LogMsg::Finished)
@@ -1059,6 +1064,7 @@ pub trait ContainerService {
             &self.db().pool,
             &CreateSession {
                 executor: Some(executor_config.executor.to_string()),
+                name: None,
             },
             Uuid::new_v4(),
             workspace.id,
@@ -1171,8 +1177,18 @@ pub trait ContainerService {
             &repo_states,
         )
         .await?;
-        if *run_reason != ExecutionProcessRunReason::ArchiveScript {
-            Workspace::set_archived(&self.db().pool, workspace.id, false).await?;
+        self.msg_stores()
+            .write()
+            .await
+            .insert(execution_process.id, Arc::new(MsgStore::new()));
+        if *run_reason != ExecutionProcessRunReason::ArchiveScript
+            && let Err(e) = Workspace::set_archived(&self.db().pool, workspace.id, false).await
+        {
+            self.msg_stores()
+                .write()
+                .await
+                .remove(&execution_process.id);
+            return Err(e.into());
         }
 
         if let Some(prompt) = match executor_action.typ() {
@@ -1194,18 +1210,29 @@ pub trait ContainerService {
 
             let coding_agent_turn_id = Uuid::new_v4();
 
-            CodingAgentTurn::create(
+            if let Err(e) = CodingAgentTurn::create(
                 &self.db().pool,
                 &create_coding_agent_turn,
                 coding_agent_turn_id,
             )
-            .await?;
+            .await
+            {
+                self.msg_stores()
+                    .write()
+                    .await
+                    .remove(&execution_process.id);
+                return Err(e.into());
+            }
         }
 
         if let Err(start_error) = self
             .start_execution_inner(workspace, &execution_process, executor_action)
             .await
         {
+            self.msg_stores()
+                .write()
+                .await
+                .remove(&execution_process.id);
             // Mark process as failed
             if let Err(update_error) = ExecutionProcess::update_completion(
                 &self.db().pool,
@@ -1271,23 +1298,34 @@ pub trait ContainerService {
         // Start processing normalised logs for executor requests and follow ups
         let workspace_root = self.workspace_to_current_dir(workspace);
         #[cfg_attr(feature = "qa-mode", allow(unused_variables))]
-        if let Some(msg_store) = self.get_msg_store_by_id(&execution_process.id).await
-            && let Some((executor_profile_id, working_dir)) = match executor_action.typ() {
-                ExecutorActionType::CodingAgentInitialRequest(request) => Some((
-                    request.executor_config.profile_id(),
-                    request.effective_dir(&workspace_root),
-                )),
-                ExecutorActionType::CodingAgentFollowUpRequest(request) => Some((
-                    request.executor_config.profile_id(),
-                    request.effective_dir(&workspace_root),
-                )),
-                ExecutorActionType::ReviewRequest(request) => Some((
-                    request.executor_config.profile_id(),
-                    request.effective_dir(&workspace_root),
-                )),
-                _ => None,
-            }
-        {
+        if let Some((executor_profile_id, working_dir)) = match executor_action.typ() {
+            ExecutorActionType::CodingAgentInitialRequest(request) => Some((
+                request.executor_config.profile_id(),
+                request.effective_dir(&workspace_root),
+            )),
+            ExecutorActionType::CodingAgentFollowUpRequest(request) => Some((
+                request.executor_config.profile_id(),
+                request.effective_dir(&workspace_root),
+            )),
+            ExecutorActionType::ReviewRequest(request) => Some((
+                request.executor_config.profile_id(),
+                request.effective_dir(&workspace_root),
+            )),
+            _ => None,
+        } {
+            let msg_store = match self.get_msg_store_by_id(&execution_process.id).await {
+                Some(store) => store,
+                None => {
+                    self.msg_stores()
+                        .write()
+                        .await
+                        .remove(&execution_process.id);
+                    return Err(ContainerError::Other(anyhow!(
+                        "MsgStore missing for execution {} during normalization setup",
+                        execution_process.id
+                    )));
+                }
+            };
             #[cfg(feature = "qa-mode")]
             {
                 let executor = QaMockExecutor;
