@@ -232,6 +232,12 @@
       "type": "directory"
     },
     {
+      "path": "packages\\web-core\\src\\pages\\kanban\\ProjectSunsetPage.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1777676595324,
+      "type": "file"
+    },
+    {
       "path": "package.json",
       "accessCount": 1,
       "lastAccessed": 1777665147934,
@@ -250,16 +256,22 @@
       "type": "file"
     },
     {
-      "path": "packages\\web-core\\src\\pages\\kanban\\ProjectSunsetPage.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1777676429193,
-      "type": "file"
-    },
-    {
       "path": "packages\\web-core\\src\\pages\\kanban\\ProjectKanban.tsx",
       "accessCount": 1,
       "lastAccessed": 1777676434192,
       "type": "file"
+    },
+    {
+      "path": "packages\\web-core\\src\\shared\\components\\CloudShutdownExportBanner.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1777676596193,
+      "type": "file"
+    },
+    {
+      "path": "packages\\web-core\\src\\pages\\kanban",
+      "accessCount": 1,
+      "lastAccessed": 1777676597586,
+      "type": "directory"
     }
   ],
   "userDirectives": []
