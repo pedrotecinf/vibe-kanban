@@ -226,6 +226,18 @@
   },
   "hotPaths": [
     {
+      "path": "packages\\web-core\\src\\shared\\components\\ui-new\\containers\\SharedAppLayout.tsx",
+      "accessCount": 18,
+      "lastAccessed": 1777676909057,
+      "type": "file"
+    },
+    {
+      "path": "packages\\remote-web\\src\\app\\layout\\RemoteAppShell.tsx",
+      "accessCount": 8,
+      "lastAccessed": 1777676842146,
+      "type": "file"
+    },
+    {
       "path": "",
       "accessCount": 2,
       "lastAccessed": 1777665143023,
