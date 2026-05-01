@@ -242,6 +242,24 @@
       "accessCount": 1,
       "lastAccessed": 1777665148692,
       "type": "file"
+    },
+    {
+      "path": ".vibe-attachments\\f4abc27a-273a-4ff6-9025-eaf39d38216d_image.png",
+      "accessCount": 1,
+      "lastAccessed": 1777676408385,
+      "type": "file"
+    },
+    {
+      "path": "packages\\web-core\\src\\pages\\kanban\\ProjectSunsetPage.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1777676429193,
+      "type": "file"
+    },
+    {
+      "path": "packages\\web-core\\src\\pages\\kanban\\ProjectKanban.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1777676434192,
+      "type": "file"
     }
   ],
   "userDirectives": []
